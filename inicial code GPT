@@ -1,0 +1,128 @@
+from flask import Flask, request, jsonify
+import os
+from openai import OpenAI
+from datetime import datetime
+from deepface import DeepFace
+import cv2
+
+app = Flask(__name__)
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+document_types = ["RG", "CNH", "Passaporte"]
+
+def save_uploaded_file(file, filename):
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    return filepath
+
+def calculate_age(birth_date):
+    try:
+        birth_date_obj = datetime.strptime(birth_date, "%d/%m/%Y")
+        today = datetime.today()
+        return today.year - birth_date_obj.year - ((today.month, today.day) < (birth_date_obj.month, birth_date_obj.day))
+    except ValueError:
+        return None
+
+def analyze_with_gpt(image_path, document_path, provided_name, provided_birth_date, document_type):
+    client = OpenAI()
+    prompt = f"""
+    Analise os seguintes dados de verificação de identidade e gere um relatório detalhado:
+    - Nome informado: {provided_name}
+    - Data de nascimento informada: {provided_birth_date}
+    - Documento enviado: {document_type}
+    
+    Tarefas:
+    1. Extraia o nome e a data de nascimento do documento e compare com os fornecidos.
+    2. Estime a idade com base na selfie e compare com a data de nascimento informada.
+    3. Identifique o gênero da pessoa na selfie, classificando como "M", "F" ou "U".
+    4. Verifique se a selfie é autêntica e corresponde ao documento enviado.
+    5. Detecte possíveis manipulações digitais, incluindo deepfake, edição digital, captura de tela ou foto sobre foto.
+    6. Gere um relatório explicativo da decisão de aprovação ou rejeição e forneça um campo booleano `approved`.
+    
+    Retorne um JSON estruturado no seguinte formato:
+    {
+        "extracted_name": "NOME_EXTRAIDO",
+        "extracted_birth_date": "DATA_EXTRAIDA",
+        "approved": true ou false,
+        "estimated_age": IDADE_ESTIMADA,
+        "gender": "M", "F" ou "U",
+        "real_selfie": true ou false,
+        "tampering_detected": true ou false,
+        "possible_manipulations": "Descrição das manipulações detectadas",
+        "summary": "Relatório explicativo da decisão"
+    }
+    """
+    
+    with open(image_path, "rb") as image_file, open(document_path, "rb") as doc_file:
+        response = client.vision.analyze(images=[image_file.read(), doc_file.read()], prompt=prompt)
+    
+    return response
+
+def compare_faces_with_deepface(photo_path, document_path):
+    try:
+        result = DeepFace.verify(img1_path=photo_path, img2_path=document_path, model_name="VGG-Face")
+        return result["verified"], result["distance"]
+    except Exception as e:
+        return False, str(e)
+
+def generate_final_report(gpt_analysis, deepface_score):
+    client = OpenAI()
+    prompt = f"""
+    Com base na seguinte análise de verificação de identidade, gere um dossiê detalhado explicando a decisão final:
+    {gpt_analysis}
+    
+    Comparação facial com DeepFace:
+    - Similaridade facial detectada: {deepface_score[0]}
+    - Distância de reconhecimento facial: {deepface_score[1]}
+    
+    O relatório deve incluir:
+    - Comparação entre os dados informados e os extraídos.
+    - Explicação da idade estimada e sua correspondência com a idade esperada.
+    - Verificação do gênero e sua correspondência com os dados informados.
+    - Análise da autenticidade da selfie e do documento.
+    - Detecção de manipulações digitais e impacto na verificação.
+    - Comparação entre GPT Vision e DeepFace.
+    - Justificativa clara para aprovação ou rejeição do cadastro.
+    """
+    
+    response = client.completions.create(
+        model="gpt-4",
+        prompt=prompt,
+        max_tokens=500
+    )
+    return response.choices[0].text
+
+@app.route('/verify', methods=['POST'])
+def verify():
+    if 'photo' not in request.files or 'document' not in request.files or 'name' not in request.form or 'document_type' not in request.form or 'birth_date' not in request.form:
+        return jsonify({'error': 'Envie uma foto, um documento, o nome, data de nascimento e o tipo de documento'}), 400
+
+    photo = request.files['photo']
+    document = request.files['document']
+    provided_name = request.form['name']
+    provided_birth_date = request.form['birth_date']
+    document_type = request.form['document_type']
+
+    if document_type not in document_types:
+        return jsonify({'error': 'Tipo de documento inválido. Escolha entre: ' + ', '.join(document_types)}), 400
+
+    photo_path = save_uploaded_file(photo, "photo.jpg")
+    document_path = save_uploaded_file(document, f"document_{document_type}.jpg")
+
+    gpt_analysis = analyze_with_gpt(photo_path, document_path, provided_name, provided_birth_date, document_type)
+    deepface_score = compare_faces_with_deepface(photo_path, document_path)
+    final_report = generate_final_report(gpt_analysis, deepface_score)
+    
+    return jsonify({
+        "analysis": gpt_analysis,
+        "deepface_verification": {
+            "verified": deepface_score[0],
+            "distance": deepface_score[1]
+        },
+        "final_report": final_report
+    })
+
+if __name__ == '__main__':
+    app.run(debug=True)

@@ -4,7 +4,8 @@
 **IdentityGuardian** is a Flask API designed for **identity verification** using Artificial Intelligence. The system detects image fraud, identifies facial manipulations, assesses image quality, and verifies document authenticity.
 
 ## 🚀 Features
-- 🔍 **Identity verification** with facial analysis
+- 🔍 **Identity verification** with facial analysis and similarity score
+- 🛡️ **Liveness detection** (ensures the selfie is real)
 - 🤖 **Photo manipulation detection** (deepfake, face swap, cropping)
 - 🧑‍🏫 **Age and gender estimation** from images
 - 💡 **Image quality analysis** (brightness, contrast)
@@ -23,6 +24,7 @@ IdentityGuardian/
 │   │   ├── document_analysis.py # Placeholder for document analysis
 │   │   ├── image_quality.py   # Brightness and contrast analysis
 │   │   ├── report_generation.py # Report generation with OpenAI GPT
+│   │   ├── face_comparison.py  # Face similarity detection
 │── uploads/                   # Folder for temporary file storage
 │── run.py                     # Main file to run the API
 │── requirements.txt            # Project dependencies
@@ -82,7 +84,9 @@ curl -X POST "http://127.0.0.1:5000/verify" \
     "face_swap_detected": false,
     "crop_or_edit_detected": true,
     "brightness": 150.4,
-    "contrast": 52.3
+    "contrast": 52.3,
+    "liveness_detected": true,
+    "similarity_score": 98.3
 }
 ```
 

@@ -1,0 +1,6 @@
+Flask
+openai
+deepface
+opencv-python
+numpy
+dlib

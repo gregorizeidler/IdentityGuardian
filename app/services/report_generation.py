@@ -3,14 +3,14 @@ from openai import OpenAI
 def generate_final_report(gpt_analysis, face_swap_detected, crop_or_edit_detected, brightness, contrast):
     client = OpenAI()
     prompt = f"""
-    Análise de verificação de identidade:
+    Identity verification analysis:
 
-    - Face swap detectado: {face_swap_detected}
-    - Imagem cortada/editada detectada: {crop_or_edit_detected}
-    - Brilho da imagem: {brightness}
-    - Contraste da imagem: {contrast}
+    - Face swap detected: {face_swap_detected}
+    - Cropped/edited image detected: {crop_or_edit_detected}
+    - Image brightness: {brightness}
+    - Image contrast: {contrast}
 
-    Gere um relatório detalhado sobre essas detecções.
+    Generate a detailed report on these detections.
     """
 
     response = client.completions.create(
